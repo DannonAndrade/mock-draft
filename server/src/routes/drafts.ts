@@ -1,0 +1,173 @@
+import { Router } from 'express';
+import { TEAM_COUNT } from '../../../shared';
+import {
+    updateDraftStatus,
+    createDraft,
+    createTeam,
+    getTeamsByDraftId,
+    getDraftById,
+    getTeamByUserId,
+    getNextAvailableTeam,
+    assignUserToTeam
+} from '../db';
+
+const router = Router();
+
+// POST /drafts - Create a new draft
+router.post('/', async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'userId is required' });
+        }
+
+        // Create the draft
+        const draft = await createDraft();
+
+        // Create all teams
+        const teamPromises = [];
+        for (let i = 1; i <= TEAM_COUNT; i++) {
+            const isCreator = i === 1;
+            const teamUserId = isCreator ? userId : null;
+
+            teamPromises.push(
+                createTeam(draft.id, `Team ${i}`, i, teamUserId)
+            );
+        }
+
+        await Promise.all(teamPromises);
+
+        // Get all teams to return
+        const teams = await getTeamsByDraftId(draft.id);
+
+        res.status(201).json({
+            draft,
+            teams,
+            message: 'Draft created successfully'
+        });
+
+    } catch (error) {
+        console.error('Error creating draft:', error);
+        res.status(500).json({
+            error: 'Failed to create draft',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// POST /drafts/:id/join - Join an existing draft
+router.post('/:id/join', async (req, res) => {
+    try {
+        const { id: draftId } = req.params;
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'userId is required' });
+        }
+
+        // Check if draft exists
+        const draft = await getDraftById(draftId);
+        if (!draft) {
+            return res.status(404).json({ error: 'Draft not found' });
+        }
+
+        // Can't join a draft that's already in progress or completed
+        if (draft.status !== 'WAITING') {
+            return res.status(400).json({
+                error: 'Cannot join - draft has already started'
+            });
+        }
+
+        // Check if user already joined
+        const existingTeam = await getTeamByUserId(draftId, userId);
+        if (existingTeam) {
+            return res.status(200).json({
+                draft,
+                team: existingTeam,
+                message: 'Already joined this draft'
+            });
+        }
+
+        // Find next available team
+        const availableTeam = await getNextAvailableTeam(draftId);
+        if (!availableTeam) {
+            return res.status(403).json({
+                error: 'Draft is full',
+                message: 'All teams have been claimed'
+            });
+        }
+
+        // Assign user to team
+        const assignedTeam = await assignUserToTeam(availableTeam.id, userId);
+
+        // Get updated teams list
+        const teams = await getTeamsByDraftId(draftId);
+
+        res.status(200).json({
+            draft,
+            team: assignedTeam,
+            teams,
+            message: 'Joined draft successfully'
+        });
+
+    } catch (error) {
+        console.error('Error joining draft:', error);
+        res.status(500).json({
+            error: 'Failed to join draft',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// POST /drafts/:id/start - Start the draft
+router.post('/:id/start', async (req, res) => {
+    try {
+        const { id: draftId } = req.params;
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'userId is required' });
+        }
+
+        // Get draft
+        const draft = await getDraftById(draftId);
+        if (!draft) {
+            return res.status(404).json({ error: 'Draft not found' });
+        }
+
+        // Check if already started
+        if (draft.status !== 'WAITING') {
+            return res.status(400).json({
+                error: 'Draft already started or completed'
+            });
+        }
+
+        // Verify user is in the draft
+        const userTeam = await getTeamByUserId(draftId, userId);
+        if (!userTeam) {
+            return res.status(403).json({
+                error: 'You must join the draft before starting it'
+            });
+        }
+
+        // Start the draft
+        const updatedDraft = await updateDraftStatus(draftId, 'IN_PROGRESS');
+        const teams = await getTeamsByDraftId(draftId);
+
+        res.status(200).json({
+            draft: updatedDraft,
+            teams,
+            message: 'Draft started successfully'
+        });
+
+    } catch (error) {
+        console.error('Error starting draft:', error);
+        res.status(500).json({
+            error: 'Failed to start draft',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+export default router;

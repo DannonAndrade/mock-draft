@@ -5,9 +5,13 @@ import { Server } from 'socket.io';
 import http from 'http';
 import pool from './db/connection';
 import { Draft, Team, Pick, Player, TEAM_COUNT, ROUND_COUNT } from '../../shared';
+import { createDraft, getDraftById } from './db';
+import draftsRouter from './routes/drafts';
 
 // Test log
-console.log('📦 Shared types loaded:', { TEAM_COUNT, ROUND_COUNT });
+//console.log('📦 Shared types loaded:', { TEAM_COUNT, ROUND_COUNT });
+
+
 
 dotenv.config();
 
@@ -25,6 +29,7 @@ const PORT = process.env.PORT || 4000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/drafts', draftsRouter);
 
 // Test route
 app.get('/health', (req, res) => {
@@ -46,6 +51,30 @@ app.get('/db-test', async (req, res) => {
       status: 'error', 
       message: 'Database connection failed',
       error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+
+//test draft db service
+app.get('/test-draft', async (req, res) => {
+  try {
+    // Create a draft
+    const draft = await createDraft();
+    
+    // Retrieve it
+    const retrieved = await getDraftById(draft.id);
+    
+    res.json({ 
+      message: 'Draft service working!',
+      created: draft,
+      retrieved
+    });
+  } catch (error) {
+    console.error('Draft test error:', error);
+    res.status(500).json({ 
+      error: 'Failed to test draft service',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
