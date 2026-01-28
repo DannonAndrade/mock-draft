@@ -7,6 +7,10 @@ import pool from './db/connection';
 import { Draft, Team, Pick, Player, TEAM_COUNT, ROUND_COUNT } from '../../shared';
 import { createDraft, getDraftById } from './db';
 import draftsRouter from './routes/drafts';
+import picksRouter from './routes/picks';
+import { setupDraftSocket } from './sockets/draftSocket';
+import { errorHandler } from './middleware/errorHandler';
+import { requestLogger } from './middleware/logger';
 
 // Test log
 //console.log('📦 Shared types loaded:', { TEAM_COUNT, ROUND_COUNT });
@@ -19,7 +23,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: '*', // Allow all origins for development
     methods: ['GET', 'POST'],
   },
 });
@@ -29,7 +33,19 @@ const PORT = process.env.PORT || 4000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(requestLogger);
 app.use('/drafts', draftsRouter);
+app.use('/picks', picksRouter);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ 
+    error: 'Not found',
+    path: req.path 
+  });
+});
+
+app.use(errorHandler);
 
 // Test route
 app.get('/health', (req, res) => {
@@ -79,14 +95,12 @@ app.get('/test-draft', async (req, res) => {
   }
 });
 
-// Socket.IO connection
-io.on('connection', (socket) => {
-  console.log('👤 User connected:', socket.id);
-  
-  socket.on('disconnect', () => {
-    console.log('👋 User disconnected:', socket.id);
-  });
-});
+// Socket.IO setup
+setupDraftSocket(io);
+
+// Export io so routes can use it
+export { io };
+
 
 // Start server only after database connects
 async function startServer() {

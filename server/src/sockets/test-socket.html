@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Socket.IO Test</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+  <h1>Socket.IO Draft Test</h1>
+  <button onclick="joinDraft()">Join Draft</button>
+  <button onclick="leaveDraft()">Leave Draft</button>
+  <div id="status"></div>
+  <pre id="data"></pre>
+
+  <script>
+    const socket = io('http://localhost:4000');
+    const draftId = 'b031ff7b-2e2c-4391-935d-9de15b987520'; // ← REPLACE THIS
+
+    socket.on('connect', () => {
+      document.getElementById('status').innerHTML = '✅ Connected';
+      console.log('Connected:', socket.id);
+    });
+
+    socket.on('draftState', (data) => {
+      console.log('Draft state received:', data);
+      document.getElementById('data').innerHTML = 
+        'Draft State:\n' + JSON.stringify(data, null, 2);
+    });
+
+    socket.on('draftUpdated', (data) => {
+      console.log('Draft updated:', data);
+      document.getElementById('data').innerHTML = 
+        'Draft Updated:\n' + JSON.stringify(data, null, 2);
+    });
+
+    socket.on('error', (error) => {
+      console.error('Socket error:', error);
+      document.getElementById('status').innerHTML = '❌ Error: ' + error.message;
+    });
+
+    function joinDraft() {
+      socket.emit('joinDraft', draftId);
+    }
+
+    function leaveDraft() {
+      socket.emit('leaveDraft', draftId);
+    }
+  </script>
+</body>
+</html>

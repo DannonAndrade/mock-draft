@@ -3,8 +3,8 @@ export type DraftState = 'WAITING' | 'IN_PROGRESS' | 'COMPLETED';
 export interface Draft {
   id: string;
   status: DraftState;
-  teamsCount: number;
+  teams_count: number;
   rounds: number;
-  currentPick: number;
-  createdAt: Date;
+  current_pick: number;
+  created_at: Date;
 }

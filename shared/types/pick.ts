@@ -1,9 +1,9 @@
 export interface Pick {
-    id: string;
-    draftId: string;
-    teamId: string;
-    playerId: string;
-    pickNumber: number;
-    round: number;
-    createdAt: Date;
-  }
+  id: string;
+  draft_id: string;
+  team_id: string;
+  player_id: string;
+  pick_number: number;
+  round: number;
+  created_at: Date;
+}
