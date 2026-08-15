@@ -7,7 +7,8 @@ import {
   getPlayerById,
   incrementCurrentPick,
   updateDraftStatus,
-  getAvailablePlayers
+  getAvailablePlayers,
+  getAllPlayers
 } from '../db';
 import { getTeamIndexForPick, getRoundForPick } from '../services/draftLogic';
 import { TOTAL_PICKS } from '../../../shared';
@@ -139,8 +140,7 @@ router.post('/', async (req, res) => {
 // GET /picks/players/:draftId - Get available players
 router.get('/players/:draftId', async (req, res) => {
   try {
-    const { draftId } = req.params;
-    const players = await getAvailablePlayers(draftId);
+    const players = await getAllPlayers();
     res.json({ players });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get players' });

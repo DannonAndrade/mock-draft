@@ -1,8 +1,7 @@
 import { TEAM_COUNT } from '../../../shared';
 
 export function getTeamIndexForPick(pickNumber: number): number {
-  // Linear draft
-  // When we reach team 8, cycle back to team 0
+  // Linear draft: after the last pick slot, cycle back to team 1
   return (pickNumber - 1) % TEAM_COUNT;
 }
 

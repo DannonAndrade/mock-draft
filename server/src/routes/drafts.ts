@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { TEAM_COUNT } from '../../../shared';
+import { NFL_TEAM_NAMES, TEAM_COUNT } from '../../../shared';
 import {
     updateDraftStatus,
     createDraft,
@@ -36,7 +36,7 @@ router.post('/', async (req, res) => {
             const teamUserId = isCreator ? userId : null;
 
             teamPromises.push(
-                createTeam(draft.id, `Team ${i}`, i, teamUserId)
+                createTeam(draft.id, NFL_TEAM_NAMES[i - 1], i, teamUserId)
             );
         }
 

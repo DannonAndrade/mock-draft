@@ -8,6 +8,7 @@ import { Draft, Team, Pick, Player, TEAM_COUNT, ROUND_COUNT } from '../../shared
 import { createDraft, getDraftById } from './db';
 import draftsRouter from './routes/drafts';
 import picksRouter from './routes/picks';
+import fantasyRouter from './routes/fantasy';
 import { setupDraftSocket } from './sockets/draftSocket';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/logger';
@@ -36,6 +37,7 @@ app.use(express.json());
 app.use(requestLogger);
 app.use('/drafts', draftsRouter);
 app.use('/picks', picksRouter);
+app.use('/fantasy', fantasyRouter);
 
 // 404 handler
 app.use((req, res) => {
