@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useDraftState } from '../hooks/useDraftState';
-import { useUserId } from '../hooks/useUserId';
+import { useAuth } from '../hooks/useAuth';
 import { useSocket } from '../hooks/useSocket';
 import PlayerList from '../components/PlayerList';
 import NflTeamLogo from '../components/NflTeamLogo';
@@ -23,7 +23,8 @@ function shortTeamName(name: string): string {
 export default function DraftRoom() {
   const { draftId } = useParams();
   const navigate = useNavigate();
-  const userId = useUserId();
+  const { user } = useAuth();
+  const userId = user?.id;
   const { draft: initialDraft, teams: initialTeams, picks: initialPicks, loading, error } = useDraftState(draftId);
   const { connected, joinDraft, leaveDraft, onDraftUpdated, onDraftState } = useSocket();
 
@@ -152,7 +153,7 @@ export default function DraftRoom() {
     setPickError('');
 
     try {
-      await makePick(draftId, userId, playerId);
+      await makePick(draftId, playerId);
       // Update will come via socket
     } catch (err) {
       setPickError(err instanceof Error ? err.message : 'Failed to make pick');
@@ -169,7 +170,7 @@ export default function DraftRoom() {
     setPickError('');
 
     try {
-      await startDraft(draftId, userId);
+      await startDraft(draftId);
       // Update will come via socket
     } catch (err) {
       setPickError(err instanceof Error ? err.message : 'Failed to start draft');
@@ -190,6 +191,7 @@ export default function DraftRoom() {
   const myTeam = teams.find(t => t.user_id === userId);
   const currentTeam = teams.find(t => t.pick_number === ((draft.current_pick - 1) % draft.teams_count) + 1);
   const isMyTurn = myTeam && currentTeam && myTeam.id === currentTeam.id;
+  const canStartDraft = myTeam && (!draft.created_by_user_id || draft.created_by_user_id === userId);
   const myPicks = myTeam ? picks.filter(p => p.team_id === myTeam.id) : [];
   const totalPicks = draft.teams_count * draft.rounds;
 
@@ -395,7 +397,7 @@ export default function DraftRoom() {
                     {pickError}
                   </div>
                 )}
-                {myTeam && (
+                {canStartDraft && (
                   <button
                     onClick={handleStartDraft}
                     disabled={startingDraft}

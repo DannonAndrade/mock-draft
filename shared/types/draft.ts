@@ -6,5 +6,6 @@ export interface Draft {
   teams_count: number;
   rounds: number;
   current_pick: number;
+  created_by_user_id: string | null;
   created_at: Date;
 }

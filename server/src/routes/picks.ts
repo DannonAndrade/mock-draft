@@ -15,18 +15,20 @@ import { TOTAL_PICKS } from '../../../shared';
 import { io } from '../index';
 import { broadcastDraftUpdate } from '../sockets/draftSocket';
 import { processBotPicks } from '../services/botService';
+import { requireAuth } from '../auth/middleware';
 
 const router = Router();
 
 // POST /picks - Make a pick
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
-    const { draftId, userId, playerId } = req.body;
+    const { draftId, playerId } = req.body;
+    const userId = req.user!.id;
 
     // Validate required fields
-    if (!draftId || !userId || !playerId) {
+    if (!draftId || !playerId) {
       return res.status(400).json({
-        error: 'draftId, userId, and playerId are required'
+        error: 'draftId and playerId are required'
       });
     }
 
@@ -67,8 +69,7 @@ router.post('/', async (req, res) => {
     if (currentTeam.user_id !== userId) {
       return res.status(403).json({
         error: 'Not your turn',
-        currentTeam: currentTeam.name,
-        currentUser: currentTeam.user_id
+        currentTeam: currentTeam.name
       });
     }
 

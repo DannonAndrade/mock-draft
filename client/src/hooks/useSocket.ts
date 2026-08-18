@@ -14,7 +14,6 @@ interface DraftUpdateData {
 }
 
 interface UseSocketReturn {
-  socket: Socket | null;
   connected: boolean;
   joinDraft: (draftId: string) => void;
   leaveDraft: (draftId: string) => void;
@@ -30,6 +29,7 @@ export function useSocket(): UseSocketReturn {
     // Create socket connection
     const socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
+      withCredentials: true,
     });
 
     socketRef.current = socket;
@@ -82,7 +82,6 @@ export function useSocket(): UseSocketReturn {
   };
 
   return {
-    socket: socketRef.current,
     connected,
     joinDraft,
     leaveDraft,

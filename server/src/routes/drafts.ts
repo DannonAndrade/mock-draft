@@ -14,20 +14,17 @@ import {
 import { io } from '../index';
 import { broadcastDraftUpdate } from '../sockets/draftSocket';
 import { processBotPicks } from '../services/botService';
+import { requireAuth } from '../auth/middleware';
 
 const router = Router();
 
 // POST /drafts - Create a new draft
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
     try {
-        const { userId } = req.body;
-
-        if (!userId) {
-            return res.status(400).json({ error: 'userId is required' });
-        }
+        const userId = req.user!.id;
 
         // Create the draft
-        const draft = await createDraft();
+        const draft = await createDraft(userId);
 
         // Create all teams
         const teamPromises = [];
@@ -63,7 +60,7 @@ router.post('/', async (req, res) => {
 // GET /drafts/:id - Get full draft state
 router.get('/:id', async (req, res) => {
     try {
-        const { id: draftId } = req.params;
+        const draftId = String(req.params.id);
 
         // Get draft
         const draft = await getDraftById(draftId);
@@ -93,14 +90,10 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /drafts/:id/join - Join an existing draft
-router.post('/:id/join', async (req, res) => {
+router.post('/:id/join', requireAuth, async (req, res) => {
     try {
-        const { id: draftId } = req.params;
-        const { userId } = req.body;
-
-        if (!userId) {
-            return res.status(400).json({ error: 'userId is required' });
-        }
+        const draftId = String(req.params.id);
+        const userId = req.user!.id;
 
         // Check if draft exists
         const draft = await getDraftById(draftId);
@@ -157,14 +150,10 @@ router.post('/:id/join', async (req, res) => {
 });
 
 // POST /drafts/:id/start - Start the draft
-router.post('/:id/start', async (req, res) => {
+router.post('/:id/start', requireAuth, async (req, res) => {
     try {
-        const { id: draftId } = req.params;
-        const { userId } = req.body;
-
-        if (!userId) {
-            return res.status(400).json({ error: 'userId is required' });
-        }
+        const draftId = String(req.params.id);
+        const userId = req.user!.id;
 
         // Get draft
         const draft = await getDraftById(draftId);
@@ -177,6 +166,10 @@ router.post('/:id/start', async (req, res) => {
             return res.status(400).json({
                 error: 'Draft already started or completed'
             });
+        }
+
+        if (draft.created_by_user_id && draft.created_by_user_id !== userId) {
+            return res.status(403).json({ error: 'Only the draft creator can start the draft' });
         }
 
         // Verify user is in the draft

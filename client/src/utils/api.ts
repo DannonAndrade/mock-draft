@@ -19,16 +19,17 @@ export type FantasyPlayer = {
 };
 
 export async function getFantasyPlayers() {
-  const response = await fetch(`${API_URL}/fantasy/players`);
+  const response = await fetch(`${API_URL}/fantasy/players`, { credentials: 'include' });
   if (!response.ok) throw new Error('ESPN fantasy rankings are unavailable');
   return response.json() as Promise<{ season: number; source: string; players: FantasyPlayer[] }>;
 }
 
-export async function createDraft(userId: string) {
+export async function createDraft() {
   const response = await fetch(`${API_URL}/drafts`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({}),
   });
 
   if (!response.ok) {
@@ -38,11 +39,12 @@ export async function createDraft(userId: string) {
   return response.json();
 }
 
-export async function joinDraft(draftId: string, userId: string) {
+export async function joinDraft(draftId: string) {
   const response = await fetch(`${API_URL}/drafts/${draftId}/join`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({}),
   });
 
   if (!response.ok) {
@@ -54,7 +56,7 @@ export async function joinDraft(draftId: string, userId: string) {
 }
 
 export async function getAvailablePlayers(draftId: string) {
-  const response = await fetch(`${API_URL}/picks/players/${draftId}`);
+  const response = await fetch(`${API_URL}/picks/players/${draftId}`, { credentials: 'include' });
   
   if (!response.ok) {
     throw new Error('Failed to fetch players');
@@ -63,11 +65,12 @@ export async function getAvailablePlayers(draftId: string) {
   return response.json();
 }
 
-export async function makePick(draftId: string, userId: string, playerId: string) {
+export async function makePick(draftId: string, playerId: string) {
   const response = await fetch(`${API_URL}/picks`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ draftId, userId, playerId }),
+    body: JSON.stringify({ draftId, playerId }),
   });
 
   if (!response.ok) {
@@ -78,11 +81,12 @@ export async function makePick(draftId: string, userId: string, playerId: string
   return response.json();
 }
 
-export async function startDraft(draftId: string, userId: string) {
+export async function startDraft(draftId: string) {
   const response = await fetch(`${API_URL}/drafts/${draftId}/start`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({}),
   });
 
   if (!response.ok) {

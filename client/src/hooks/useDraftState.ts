@@ -28,7 +28,7 @@ export function useDraftState(draftId: string | undefined) {
 
     async function fetchDraft() {
       try {
-        const response = await fetch(`${API_URL}/drafts/${draftId}`);
+        const response = await fetch(`${API_URL}/drafts/${draftId}`, { credentials: 'include' });
         
         if (!response.ok) {
           throw new Error('Draft not found');

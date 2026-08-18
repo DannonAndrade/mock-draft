@@ -4,6 +4,10 @@ import { getDraftById, getTeamsByDraftId, getPicksByDraftId } from '../db';
 export function setupDraftSocket(io: Server) {
   
   io.on('connection', (socket: Socket) => {
+    const request = socket.request as typeof socket.request & {
+      session?: { passport?: { user?: string } };
+    };
+    socket.data.userId = request.session?.passport?.user ?? null;
     console.log('👤 User connected:', socket.id);
     
     // Join a draft room

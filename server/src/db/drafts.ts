@@ -1,10 +1,10 @@
 import pool from './connection';
 import { Draft, DraftState, TEAM_COUNT, ROUND_COUNT } from '../../../shared';
 
-export async function createDraft(): Promise<Draft> {
+export async function createDraft(userId: string): Promise<Draft> {
   const query = `
-    INSERT INTO drafts (status, teams_count, rounds, current_pick)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO drafts (status, teams_count, rounds, current_pick, created_by_user_id)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING *
   `;
   
@@ -15,7 +15,7 @@ export async function createDraft(): Promise<Draft> {
     1
   ];
   
-  const result = await pool.query(query, values);
+  const result = await pool.query(query, [...values, userId]);
   return result.rows[0];
 }
 

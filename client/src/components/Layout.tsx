@@ -1,9 +1,9 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { useUserId } from '../hooks/useUserId';
+import { useAuth } from '../hooks/useAuth';
 import DraftBaseLogo from '../assets/DraftBase-Logo.svg';
 
 export default function Layout() {
-  const userId = useUserId();
+  const { user, loading } = useAuth();
   const location = useLocation();
   const activeDraftId = localStorage.getItem('activeDraftId');
 
@@ -30,6 +30,16 @@ export default function Layout() {
               Home
             </Link>
             <Link
+              to="/simulator"
+              className={`text-sm font-semibold transition py-5 border-b-2 h-full flex items-center ${
+                location.pathname === '/simulator' || location.pathname.startsWith('/draft/')
+                  ? 'text-white border-[#022A53]'
+                  : 'text-blue-50 border-transparent hover:text-white hover:border-[#022A53]/55'
+              }`}
+            >
+              Simulator
+            </Link>
+            <Link
               to="/board"
               className={`text-sm font-semibold transition py-5 border-b-2 h-full flex items-center ${
                 location.pathname === '/board'
@@ -43,18 +53,41 @@ export default function Layout() {
 
           <div className="flex items-center gap-4">
             <Link
+              to="/simulator"
+              className="md:hidden bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+            >
+              Simulator
+            </Link>
+            <Link
               to="/board"
               className="md:hidden bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors"
             >
               Board
             </Link>
-            {userId && (
-              <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#022A53]/80 text-blue-100 text-xs font-semibold rounded-full border border-blue-200/20">
-                <span className="w-1.5 h-1.5 bg-blue-300 rounded-full animate-pulse" />
-                <span className="opacity-75 font-mono">{userId.slice(0, 8)}...</span>
-              </div>
-            )}
-            {activeDraftId && !location.pathname.includes(`/draft/${activeDraftId}`) && (
+            {user ? (
+              <Link
+                to="/account"
+                aria-label="Open account"
+                className={`flex items-center gap-2 rounded-full px-1.5 py-1 transition hover:bg-white/10 ${
+                  location.pathname === '/account' ? 'bg-white/15' : ''
+                }`}
+              >
+                {user.avatarUrl && (
+                  <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" className="h-8 w-8 rounded-full border border-white/30" />
+                )}
+                {!user.avatarUrl && (
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#022A53] text-xs font-black text-white">
+                    {user.displayName.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="hidden max-w-32 truncate text-xs font-semibold lg:inline">{user.displayName}</span>
+              </Link>
+            ) : !loading ? (
+              <Link to="/signin" className="bg-white text-[#022A53] text-xs sm:text-sm font-bold px-3.5 py-2 rounded-lg hover:bg-blue-50 transition-colors">
+                Sign in
+              </Link>
+            ) : null}
+            {user && activeDraftId && !location.pathname.includes(`/draft/${activeDraftId}`) && (
               <Link
                 to={`/draft/${activeDraftId}`}
                 className="bg-[#022A53] hover:bg-[#011f40] text-white text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-lg transition-colors"

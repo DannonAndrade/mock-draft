@@ -12,6 +12,9 @@ import fantasyRouter from './routes/fantasy';
 import { setupDraftSocket } from './sockets/draftSocket';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/logger';
+import passport, { configurePassport } from './auth/passport';
+import { sessionMiddleware } from './auth/session';
+import authRouter from './routes/auth';
 
 // Test log
 //console.log('📦 Shared types loaded:', { TEAM_COUNT, ROUND_COUNT });
@@ -21,10 +24,14 @@ import { requestLogger } from './middleware/logger';
 dotenv.config();
 
 const app = express();
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow all origins for development
+    origin: allowedOrigins,
+    credentials: true,
     methods: ['GET', 'POST'],
   },
 });
@@ -32,22 +39,18 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 4000;
 
 // Middleware
-app.use(cors());
+if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(requestLogger);
+app.use(sessionMiddleware);
+configurePassport();
+app.use(passport.initialize());
+app.use(passport.session());
+app.use('/auth', authRouter);
 app.use('/drafts', draftsRouter);
 app.use('/picks', picksRouter);
 app.use('/fantasy', fantasyRouter);
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ 
-    error: 'Not found',
-    path: req.path 
-  });
-});
-
-app.use(errorHandler);
 
 // Test route
 app.get('/health', (req, res) => {
@@ -78,7 +81,8 @@ app.get('/db-test', async (req, res) => {
 app.get('/test-draft', async (req, res) => {
   try {
     // Create a draft
-    const draft = await createDraft();
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    const draft = await createDraft(req.user.id);
     
     // Retrieve it
     const retrieved = await getDraftById(draft.id);
@@ -98,10 +102,17 @@ app.get('/test-draft', async (req, res) => {
 });
 
 // Socket.IO setup
+io.engine.use(sessionMiddleware as any);
 setupDraftSocket(io);
 
 // Export io so routes can use it
 export { io };
+
+// Error handlers must come after every application route.
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found', path: req.path });
+});
+app.use(errorHandler);
 
 
 // Start server only after database connects
