@@ -9,18 +9,23 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  AlertCircle, ChevronDown, ChevronUp, Download, Flag, GripVertical, ListFilter,
+  AlertCircle, ArrowLeft, Check, ChevronDown, ChevronUp, Download, Flag, GripVertical, ListFilter,
   MousePointer2, Pause, Play, Plus, Radio, RefreshCw, Search, Star,
-  Trash2, Undo2, Users, X,
+  Trash2, Undo2, X,
 } from 'lucide-react';
-import { FantasyPlayer, getFantasyPlayers } from '../utils/api';
+import { Link, Navigate, useParams } from 'react-router-dom';
+import {
+  FantasyPlayer, getFantasyBoard, getFantasyPlayerGameLog, getFantasyPlayers, updateFantasyBoard,
+  type FantasyGameLog, type FantasyGameLogEntry,
+} from '../utils/api';
+import { useAuth } from '../hooks/useAuth';
+import NflTeamLogo from '../components/NflTeamLogo';
 
 type Scoring = 'PPR' | 'Half PPR' | 'Standard' | 'Superflex';
 type DraftOrder = 'Snake' | 'Linear' | 'Auction';
 type Position = 'ALL' | FantasyPlayer['position'];
 type BoardMeta = Record<string, { note: string; target: boolean; avoid: boolean }>;
 
-const STORAGE_KEY = 'draftbase-fantasy-board-v1';
 const POSITIONS: Position[] = ['ALL', 'RB', 'WR', 'QB', 'TE', 'D/ST', 'K'];
 const positionColors: Record<string, string> = {
   RB: 'bg-cyan-50 text-cyan-700 border-cyan-200',
@@ -37,7 +42,7 @@ function SortableBoardItem({ id, disabled, children }: { id: string; disabled: b
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     disabled,
-    transition: { duration: 180, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' },
+    transition: null,
   });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -56,8 +61,8 @@ function PlayerImageLink({ player }: { player: FantasyPlayer }) {
     : <span className="text-[9px] font-black text-slate-400">NFL</span>;
   const className = 'h-8 w-8 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center';
 
-  return player.sleeperUrl ? (
-    <a href={player.sleeperUrl} target="_blank" rel="noreferrer noopener" title={`View ${player.name} stats on Sleeper`} aria-label={`View ${player.name} stats on Sleeper`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} className={`${className} hover:border-cyan-500 hover:ring-2 hover:ring-cyan-100 transition`}>
+  return player.espnUrl ? (
+    <a href={player.espnUrl} target="_blank" rel="noreferrer noopener" title={`View ${player.name} on ESPN`} aria-label={`View ${player.name} on ESPN`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} className={`${className} hover:border-cyan-500 hover:ring-2 hover:ring-cyan-100 transition`}>
       {content}
     </a>
   ) : <div className={className}>{content}</div>;
@@ -74,6 +79,35 @@ function formatNumber(value: number | null, digits = 1) {
   return value == null ? '—' : value.toFixed(digits);
 }
 
+function gameStatCells(player: FantasyPlayer, game: FantasyGameLogEntry) {
+  const stat = game.stats;
+  const touchdowns = (stat.rushingTouchdowns ?? 0) + (stat.receivingTouchdowns ?? 0);
+  if (player.position === 'QB') {
+    return [
+      { label: 'CMP/ATT', value: `${stat.completions ?? 0}/${stat.passingAttempts ?? 0}` },
+      { label: 'PASS YD', value: stat.passingYards ?? 0 },
+      { label: 'PASS TD', value: stat.passingTouchdowns ?? 0 },
+      { label: 'INT', value: stat.interceptions ?? stat.passingInterceptions ?? 0 },
+      { label: 'RUSH YD', value: stat.rushingYards ?? 0 },
+    ];
+  }
+  if (player.position === 'K') {
+    return [
+      { label: 'FG', value: `${stat.fieldGoalsMade ?? 0}/${stat.fieldGoalAttempts ?? 0}` },
+      { label: '40–49', value: stat.fieldGoalsMade40_49 ?? 0 },
+      { label: '50+', value: stat.fieldGoalsMade50 ?? 0 },
+      { label: 'XP', value: `${stat.extraPointsMade ?? 0}/${stat.extraPointAttempts ?? 0}` },
+    ];
+  }
+  return [
+    { label: 'CAR', value: stat.rushingAttempts ?? 0 },
+    { label: 'RUSH YD', value: stat.rushingYards ?? 0 },
+    { label: 'REC/TGT', value: `${stat.receptions ?? 0}/${stat.receivingTargets ?? 0}` },
+    { label: 'REC YD', value: stat.receivingYards ?? 0 },
+    { label: 'TD', value: touchdowns },
+  ];
+}
+
 function teamSlotForOverall(overall: number, leagueSize: number, order: DraftOrder) {
   const round = Math.floor((overall - 1) / leagueSize) + 1;
   const roundPick = ((overall - 1) % leagueSize) + 1;
@@ -81,6 +115,9 @@ function teamSlotForOverall(overall: number, leagueSize: number, order: DraftOrd
 }
 
 export default function DraftBoard() {
+  const { boardId } = useParams();
+  const { user, loading: authLoading } = useAuth();
+  const [boardName, setBoardName] = useState('Fantasy Draft Board');
   const [players, setPlayers] = useState<FantasyPlayer[]>([]);
   const [season, setSeason] = useState(new Date().getFullYear());
   const [boardIds, setBoardIds] = useState<string[]>([]);
@@ -93,41 +130,45 @@ export default function DraftBoard() {
   const [liveMode, setLiveMode] = useState(false);
   const [draftLog, setDraftLog] = useState<string[]>([]);
   const [position, setPosition] = useState<Position>('ALL');
+  const [team, setTeam] = useState('ALL');
+  const [teamFilterOpen, setTeamFilterOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [gameLogs, setGameLogs] = useState<Record<string, FantasyGameLog>>({});
+  const [gameLogLoading, setGameLogLoading] = useState<Record<string, boolean>>({});
+  const [gameLogErrors, setGameLogErrors] = useState<Record<string, string>>({});
   const [savedLoaded, setSavedLoaded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 2 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 1 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 80, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const loadPlayers = async () => {
+  const loadBoard = async () => {
+    if (!boardId) return;
+    setSavedLoaded(false);
     setLoading(true);
     setError('');
     try {
-      const response = await getFantasyPlayers();
+      const [response, { board }] = await Promise.all([getFantasyPlayers(), getFantasyBoard(boardId)]);
       setPlayers(response.players);
       setSeason(response.season);
-      const savedRaw = localStorage.getItem(STORAGE_KEY);
-      if (savedRaw) {
-        const saved = JSON.parse(savedRaw);
-        setBoardIds((saved.boardIds as string[]).filter((id) => response.players.some((p) => p.id === id)));
-        setMeta(saved.meta ?? {});
-        setScoring(saved.scoring ?? 'PPR');
-        setDraftOrder(saved.draftOrder ?? 'Snake');
-        setLeagueSize(saved.leagueSize ?? 10);
-        setDraftPosition(saved.draftPosition ?? 1);
-        setTierBreakIds(saved.tierBreakIds ?? []);
-        setLiveMode(saved.liveMode ?? false);
-        setDraftLog((saved.draftLog ?? []).filter((id: string) => response.players.some((p) => p.id === id)));
-      } else {
-        setBoardIds(response.players.slice(0, 100).map((player) => player.id));
-      }
+      setBoardName(board.name);
+      setScoring(board.scoring);
+      setDraftOrder(board.draftOrder);
+      setLeagueSize(board.leagueSize);
+      setDraftPosition(board.draftPosition);
+      const playerIds = new Set(response.players.map((player) => player.id));
+      setBoardIds(board.state.boardIds.length ? board.state.boardIds.filter((id) => playerIds.has(id)) : response.players.slice(0, 100).map((player) => player.id));
+      setMeta(board.state.meta ?? {});
+      setTierBreakIds(board.state.tierBreakIds ?? []);
+      setLiveMode(board.state.liveMode ?? false);
+      setDraftLog((board.state.draftLog ?? []).filter((id) => playerIds.has(id)));
       setSavedLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load fantasy players');
@@ -136,18 +177,25 @@ export default function DraftBoard() {
     }
   };
 
-  useEffect(() => { void loadPlayers(); }, []);
+  useEffect(() => { if (user && boardId) void loadBoard(); }, [user, boardId]);
 
   useEffect(() => {
-    if (!savedLoaded) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ boardIds, meta, scoring, draftOrder, leagueSize, draftPosition, tierBreakIds, liveMode, draftLog }));
-  }, [boardIds, meta, scoring, draftOrder, leagueSize, draftPosition, tierBreakIds, liveMode, draftLog, savedLoaded]);
+    if (!savedLoaded || !boardId) return;
+    setSaveStatus('saving');
+    const timeout = window.setTimeout(() => {
+      updateFantasyBoard(boardId, { boardIds, meta, tierBreakIds, liveMode, draftLog })
+        .then(() => setSaveStatus('saved'))
+        .catch(() => setSaveStatus('error'));
+    }, 700);
+    return () => window.clearTimeout(timeout);
+  }, [boardIds, meta, tierBreakIds, liveMode, draftLog, savedLoaded, boardId]);
 
   useEffect(() => {
     if (draftPosition > leagueSize) setDraftPosition(leagueSize);
   }, [draftPosition, leagueSize]);
 
   const playerMap = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
+  const teams = useMemo(() => [...new Set(players.map((player) => player.team))].sort(), [players]);
   const boardPlayers = useMemo(
     () => boardIds.map((id) => playerMap.get(id)).filter((player): player is FantasyPlayer => Boolean(player)),
     [boardIds, playerMap],
@@ -155,12 +203,14 @@ export default function DraftBoard() {
   const normalizedSearch = search.trim().toLowerCase();
   const visibleBoard = boardPlayers.filter((player) =>
     (position === 'ALL' || player.position === position) &&
+    (team === 'ALL' || player.team === team) &&
     (!liveMode || !draftLog.includes(player.id)) &&
     (!normalizedSearch || `${player.name} ${player.team} ${player.position}`.toLowerCase().includes(normalizedSearch)),
   );
   const availablePlayers = players
     .filter((player) => !boardIds.includes(player.id))
     .filter((player) => position === 'ALL' || player.position === position)
+    .filter((player) => team === 'ALL' || player.team === team)
     .filter((player) => !liveMode || !draftLog.includes(player.id))
     .filter((player) => !normalizedSearch || `${player.name} ${player.team} ${player.position}`.toLowerCase().includes(normalizedSearch))
     .sort((a, b) => playerRank(a, scoring) - playerRank(b, scoring));
@@ -237,6 +287,33 @@ export default function DraftBoard() {
     }));
   };
 
+  const loadPlayerGameLog = async (player: FantasyPlayer) => {
+    if (gameLogs[player.id] || gameLogLoading[player.id]) return;
+    if (player.position === 'D/ST') {
+      setGameLogs((current) => ({ ...current, [player.id]: { season: season - 1, source: 'ESPN', games: [] } }));
+      return;
+    }
+    setGameLogLoading((current) => ({ ...current, [player.id]: true }));
+    setGameLogErrors((current) => ({ ...current, [player.id]: '' }));
+    try {
+      const log = await getFantasyPlayerGameLog(player.id, season - 1, scoring);
+      setGameLogs((current) => ({ ...current, [player.id]: log }));
+    } catch (err) {
+      setGameLogErrors((current) => ({ ...current, [player.id]: err instanceof Error ? err.message : 'Game log unavailable' }));
+    } finally {
+      setGameLogLoading((current) => ({ ...current, [player.id]: false }));
+    }
+  };
+
+  const togglePlayerDetails = (player: FantasyPlayer) => {
+    if (expandedId === player.id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(player.id);
+    void loadPlayerGameLog(player);
+  };
+
   const resetBoard = () => {
     if (!window.confirm('Reset your board to ESPN’s current top 100? Your custom order and notes will be replaced.')) return;
     setBoardIds([...players].sort((a, b) => playerRank(a, scoring) - playerRank(b, scoring)).slice(0, 100).map((p) => p.id));
@@ -262,63 +339,48 @@ export default function DraftBoard() {
     URL.revokeObjectURL(url);
   };
 
+  if (!authLoading && !user) return <Navigate to="/signin" replace />;
+
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#eef2f6] text-slate-900">
       <section className="bg-[#061f3c] text-white border-b border-slate-800">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-7">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
-            <div>
-              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-cyan-400 mb-2">
-                <span className="h-2 w-2 rounded-full bg-cyan-400" /> {season} Fantasy Football
+        <div className="max-w-screen-2xl mx-auto px-4 py-4 sm:px-6">
+          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-black uppercase tracking-[0.14em]">
+            <Link to="/fantasy" className="inline-flex items-center gap-1.5 text-slate-300 hover:text-white"><ArrowLeft size={12} /> Draft boards</Link>
+            <span className="text-slate-600">/</span>
+            <span className="inline-flex items-center gap-1.5 text-cyan-400"><span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> {season} Fantasy Football</span>
+          </div>
+          <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className="mr-1 truncate text-xl font-black tracking-tight sm:text-2xl">{boardName}</h1>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-300">
+                <span className="rounded-md bg-white/10 px-2 py-1">{scoring}</span>
+                <span className="rounded-md bg-white/10 px-2 py-1">{draftOrder}</span>
+                <span className="rounded-md bg-white/10 px-2 py-1">{leagueSize} teams</span>
+                {draftOrder !== 'Auction' && <span className="rounded-md bg-white/10 px-2 py-1">Pick {draftPosition}</span>}
+                <span className={`inline-flex items-center gap-1 px-1.5 ${saveStatus === 'error' ? 'text-red-300' : 'text-slate-400'}`}>
+                  {saveStatus === 'saved' && <Check size={13} />}{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
+                </span>
               </div>
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Build your board.</h1>
-              <p className="text-slate-300 mt-2 max-w-xl text-sm">Rank your targets, group them into tiers, and take your plan into draft night.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={toggleLiveDraft} disabled={!players.length} className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-black border transition disabled:opacity-50 ${liveMode ? 'bg-rose-500 text-white border-rose-400 hover:bg-rose-600' : 'bg-emerald-500 text-[#061f3c] border-emerald-400 hover:bg-emerald-400'}`}>
-                {liveMode ? <><Pause size={16} /> Exit live mode</> : <><Play size={16} /> Start live draft</>}
+            <div className="flex shrink-0 flex-wrap gap-1.5">
+              <button onClick={toggleLiveDraft} disabled={!players.length} className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs font-black transition disabled:opacity-50 ${liveMode ? 'bg-rose-500 text-white border-rose-400 hover:bg-rose-600' : 'bg-emerald-500 text-[#061f3c] border-emerald-400 hover:bg-emerald-400'}`}>
+                {liveMode ? <><Pause size={14} /> Exit live</> : <><Play size={14} /> Live draft</>}
               </button>
-              <button onClick={resetBoard} disabled={!players.length} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-600 text-sm font-bold hover:bg-white/5 disabled:opacity-50">
-                <RefreshCw size={15} /> Reset top 100
+              <button onClick={resetBoard} disabled={!players.length} className="inline-flex items-center gap-1.5 rounded-md border border-slate-600 px-3 py-2 text-xs font-bold hover:bg-white/5 disabled:opacity-50">
+                <RefreshCw size={13} /> Reset
               </button>
-              <button onClick={downloadCsv} disabled={!boardPlayers.length} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#00a7d8] hover:bg-cyan-500 text-[#061f3c] text-sm font-black disabled:opacity-50">
-                <Download size={16} /> Download CSV
+              <button onClick={downloadCsv} disabled={!boardPlayers.length} className="inline-flex items-center gap-1.5 rounded-md bg-[#00a7d8] px-3 py-2 text-xs font-black text-[#061f3c] hover:bg-cyan-500 disabled:opacity-50">
+                <Download size={14} /> CSV
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-7">
-            <label className="text-xs font-bold text-slate-300">Scoring
-              <select value={scoring} onChange={(e) => setScoring(e.target.value as Scoring)} className="mt-1.5 w-full bg-[#0c2b4d] border border-slate-600 rounded-lg px-3 py-2.5 text-white font-bold outline-none focus:border-cyan-400">
-                <option>PPR</option><option>Half PPR</option><option>Standard</option><option>Superflex</option>
-              </select>
-            </label>
-            <label className="text-xs font-bold text-slate-300">Draft type
-              <select value={draftOrder} onChange={(e) => setDraftOrder(e.target.value as DraftOrder)} className="mt-1.5 w-full bg-[#0c2b4d] border border-slate-600 rounded-lg px-3 py-2.5 text-white font-bold outline-none focus:border-cyan-400">
-                <option>Snake</option><option>Linear</option><option>Auction</option>
-              </select>
-            </label>
-            <label className="text-xs font-bold text-slate-300">League size
-              <select value={leagueSize} onChange={(e) => setLeagueSize(Number(e.target.value))} className="mt-1.5 w-full bg-[#0c2b4d] border border-slate-600 rounded-lg px-3 py-2.5 text-white font-bold outline-none focus:border-cyan-400">
-                {[8, 10, 12, 14, 16].map((size) => <option key={size} value={size}>{size} teams</option>)}
-              </select>
-            </label>
-            <label className="text-xs font-bold text-slate-300">Draft position
-              <select value={draftPosition} onChange={(e) => setDraftPosition(Number(e.target.value))} disabled={draftOrder === 'Auction'} className="mt-1.5 w-full bg-[#0c2b4d] border border-slate-600 rounded-lg px-3 py-2.5 text-white font-bold outline-none focus:border-cyan-400 disabled:opacity-50">
-                {Array.from({ length: leagueSize }, (_, index) => <option key={index + 1} value={index + 1}>Pick {index + 1}</option>)}
-              </select>
-            </label>
-            <div className="text-xs font-bold text-slate-300">Board setup
-              <div className="mt-1.5 h-[42px] bg-[#0c2b4d] border border-slate-600 rounded-lg px-3 flex items-center gap-2 text-white">
-                <Users size={15} className="text-cyan-400" /> {draftOrder === 'Auction' ? `$200 auction` : `${leagueSize}-team · Slot ${draftPosition}`}
-              </div>
-            </div>
-          </div>
           {draftPicks.length > 0 && (
-            <div className="mt-5 pt-4 border-t border-white/10">
-              <div className="flex items-center justify-between gap-3 mb-2"><p className="text-[10px] uppercase tracking-[0.16em] font-black text-slate-400">Your first 16 picks</p><p className="text-[10px] text-slate-400">Round.slot · overall</p></div>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {draftPicks.map((pick) => <div key={pick.round} className="shrink-0 rounded-md border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-2 text-center"><p className="text-xs font-black text-cyan-300">{pick.round}.{String(pick.slot).padStart(2, '0')}</p><p className="text-[9px] text-slate-400">#{pick.overall} overall</p></div>)}
+            <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3">
+              <p className="hidden shrink-0 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 sm:block">Your picks</p>
+              <div className="flex flex-1 gap-1.5 overflow-x-auto pb-0.5">
+                {draftPicks.map((pick) => <div key={pick.round} className="shrink-0 rounded border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-center"><span className="text-[10px] font-black text-cyan-300">{pick.round}.{String(pick.slot).padStart(2, '0')}</span><span className="ml-1 text-[8px] text-slate-400">#{pick.overall}</span></div>)}
               </div>
             </div>
           )}
@@ -342,13 +404,27 @@ export default function DraftBoard() {
           </section>
         )}
         <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col lg:flex-row gap-3 lg:items-center justify-between mb-5">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
+          <div className="flex flex-wrap items-center gap-2">
             <ListFilter size={17} className="text-slate-400 shrink-0" />
             {POSITIONS.map((item) => (
               <button key={item} onClick={() => setPosition(item)} className={`px-3 py-1.5 rounded-md text-xs font-black whitespace-nowrap border ${position === item ? 'bg-[#062b52] text-white border-[#062b52]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
                 {item} {item !== 'ALL' && <span className="opacity-60">{positionCounts[item] ?? 0}</span>}
               </button>
             ))}
+            <div className="mx-1 h-6 w-px shrink-0 bg-slate-200" />
+            <div className="relative shrink-0">
+              <button type="button" onClick={() => setTeamFilterOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={teamFilterOpen} className="inline-flex min-w-28 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-600 hover:border-slate-400 focus:border-[#0081C6]">
+                {team === 'ALL' ? <span className="flex h-5 w-5 items-center justify-center rounded bg-slate-100 text-[8px] text-slate-400">NFL</span> : <NflTeamLogo teamName={team} className="h-5 w-5" />}
+                <span className="flex-1 text-left">{team === 'ALL' ? 'All teams' : team}</span>
+                <ChevronDown size={13} className={`transition-transform ${teamFilterOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {teamFilterOpen && (
+                <div role="listbox" aria-label="Filter by team" className="absolute left-0 top-full z-40 mt-1 grid max-h-72 w-56 grid-cols-2 gap-0.5 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                  <button type="button" role="option" aria-selected={team === 'ALL'} onClick={() => { setTeam('ALL'); setTeamFilterOpen(false); }} className={`col-span-2 flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-bold ${team === 'ALL' ? 'bg-[#062b52] text-white' : 'text-slate-600 hover:bg-slate-100'}`}><span className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-[8px] text-slate-400">NFL</span> All teams</button>
+                  {teams.map((teamName) => <button type="button" role="option" aria-selected={team === teamName} key={teamName} onClick={() => { setTeam(teamName); setTeamFilterOpen(false); }} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-bold ${team === teamName ? 'bg-sky-50 text-[#0074b3]' : 'text-slate-600 hover:bg-slate-100'}`}><NflTeamLogo teamName={teamName} className="h-6 w-6" /><span>{teamName}</span></button>)}
+                </div>
+              )}
+            </div>
           </div>
           <div className="relative w-full lg:w-80">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -359,7 +435,7 @@ export default function DraftBoard() {
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-5 flex items-start gap-3 text-red-800 mb-5">
-            <AlertCircle className="shrink-0" size={20} /><div><p className="font-black">Couldn’t load ESPN’s rankings</p><p className="text-sm mt-1">{error}. Make sure the DraftBase server is running, then try again.</p><button onClick={() => void loadPlayers()} className="mt-3 text-sm font-black underline">Try again</button></div>
+            <AlertCircle className="shrink-0" size={20} /><div><p className="font-black">Couldn’t load this draft board</p><p className="text-sm mt-1">{error}. Make sure the DraftBase server is running, then try again.</p><button onClick={() => void loadBoard()} className="mt-3 text-sm font-black underline">Try again</button></div>
           </div>
         )}
 
@@ -414,11 +490,11 @@ export default function DraftBoard() {
                         )}
                         <article
                           onClick={(e) => {
-                            if ((e.target as HTMLElement).closest('button,input,textarea,select')) return;
+                            if ((e.target as HTMLElement).closest('button,input,textarea,select,a')) return;
                             if (liveMode) { toggleDrafted(player.id); return; }
                             if (movingId) placePlayer(movingId, player.id);
                           }}
-                          className={`relative border-b border-slate-100 last:border-0 transition-colors ${isDrafted ? 'bg-slate-100 opacity-60' : playerMeta.avoid ? 'bg-red-50/70' : ''} ${liveMode ? 'cursor-pointer hover:bg-rose-50' : movingId && movingId !== player.id ? 'cursor-pointer hover:bg-cyan-50' : 'hover:bg-slate-50'} ${movingId === player.id ? 'bg-cyan-50 ring-2 ring-inset ring-cyan-400' : ''}`}
+                          className={`relative border-b border-slate-200/70 last:border-0 transition-colors ${isDrafted ? 'bg-slate-100 opacity-60' : playerMeta.avoid ? 'bg-red-50/70' : playerMeta.target ? 'bg-amber-50/80' : 'bg-slate-50/70'} ${liveMode ? 'cursor-pointer hover:bg-rose-50' : movingId && movingId !== player.id ? 'cursor-pointer hover:bg-cyan-50' : playerMeta.target ? 'hover:bg-amber-100/70' : 'hover:bg-slate-100'} ${movingId === player.id ? 'bg-cyan-50 ring-2 ring-inset ring-cyan-400' : ''}`}
                         >
                   <div className="grid grid-cols-[62px_minmax(0,1fr)] md:grid-cols-[62px_minmax(220px,1fr)_64px_80px_70px_98px_148px] gap-2 md:gap-3 items-center px-3 sm:px-4 py-1.5">
                             <div className="flex items-center">
@@ -426,7 +502,7 @@ export default function DraftBoard() {
                             </div>
                             <div className="flex items-center gap-3 min-w-0">
                               <PlayerImageLink player={player} />
-                              <div className="min-w-0"><div className="flex items-center gap-2"><button onClick={() => setExpandedId(expandedId === player.id ? null : player.id)} className={`font-black text-sm text-left truncate hover:text-[#0081C6] ${isDrafted ? 'line-through' : ''}`}>{player.name}</button>{!liveMode && userPick && <span className="md:hidden rounded bg-[#062b52] text-cyan-300 px-1.5 py-0.5 text-[9px] font-black">YOUR {userPick.round}.{String(userPick.slot).padStart(2, '0')}</span>}{liveMode && <button onClick={() => toggleDrafted(player.id)} className={`md:hidden rounded px-1.5 py-0.5 text-[9px] font-black ${isDrafted ? 'bg-slate-300 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>{isDrafted ? `TAKEN #${draftedAt}` : 'MARK TAKEN'}</button>}</div><div className="flex items-center gap-1.5 mt-1"><span className={`border rounded px-1.5 py-0.5 text-[9px] font-black ${positionColors[player.position]}`}>{player.position}</span><span className="text-xs font-bold text-slate-500">{player.team}</span>{player.injuryStatus !== 'ACTIVE' && <span className="text-[9px] font-black text-amber-700 uppercase">{player.injuryStatus}</span>}</div></div>
+                              <div className="min-w-0"><div className="flex items-center gap-2"><button onClick={() => togglePlayerDetails(player)} className={`font-black text-sm text-left truncate hover:text-[#0081C6] ${isDrafted ? 'line-through' : ''}`}>{player.name}</button>{!liveMode && userPick && <span className="md:hidden rounded bg-[#062b52] text-cyan-300 px-1.5 py-0.5 text-[9px] font-black">YOUR {userPick.round}.{String(userPick.slot).padStart(2, '0')}</span>}{liveMode && <button onClick={() => toggleDrafted(player.id)} className={`md:hidden rounded px-1.5 py-0.5 text-[9px] font-black ${isDrafted ? 'bg-slate-300 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>{isDrafted ? `TAKEN #${draftedAt}` : 'MARK TAKEN'}</button>}</div><div className="flex items-center gap-1.5 mt-1"><span className={`border rounded px-1.5 py-0.5 text-[9px] font-black ${positionColors[player.position]}`}>{player.position}</span><span className="text-xs font-bold text-slate-500">{player.team}</span>{player.injuryStatus !== 'ACTIVE' && <span className="text-[9px] font-black text-amber-700 uppercase">{player.injuryStatus}</span>}</div></div>
                             </div>
                             <div className="hidden md:block"><span className="font-black">{playerRank(player, scoring)}</span><p className="text-[10px] text-slate-400">{scoring}</p></div>
                             <div className="hidden md:block"><span className="font-black">{formatNumber(player.projectedPoints)}</span><p className="text-[10px] text-slate-400">points</p></div>
@@ -437,7 +513,7 @@ export default function DraftBoard() {
                       <button onClick={() => updateMeta(player.id, { avoid: !playerMeta.avoid, target: false })} title={playerMeta.avoid ? 'Remove do-not-draft flag' : 'Do not draft'} aria-label={playerMeta.avoid ? `Remove red flag from ${player.name}` : `Do not draft ${player.name}`} className={`h-7 w-7 rounded-md flex items-center justify-center transition ${playerMeta.avoid ? 'bg-red-100 text-red-600' : 'text-slate-400 hover:bg-red-50 hover:text-red-600'}`}><Flag size={14} className={playerMeta.avoid ? 'fill-red-500' : ''} /></button>
                               <button onClick={() => setMovingId(player.id)} disabled={liveMode} title="Move player" aria-label={`Move ${player.name}`} className="h-7 w-7 rounded-md text-slate-400 hover:bg-cyan-50 hover:text-cyan-700 flex items-center justify-center disabled:opacity-30"><MousePointer2 size={14} /></button>
                               <button onClick={() => { setBoardIds((ids) => ids.filter((id) => id !== player.id)); setTierBreakIds((ids) => ids.filter((id) => id !== player.id)); }} title="Remove from board" aria-label={`Remove ${player.name}`} className="h-7 w-7 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center"><Trash2 size={14} /></button>
-                              <button onClick={() => setExpandedId(expandedId === player.id ? null : player.id)} title="Player details" aria-label={`Show details for ${player.name}`} className="h-7 w-7 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center">{expandedId === player.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button>
+                              <button onClick={() => togglePlayerDetails(player)} title="Player details" aria-label={`Show details for ${player.name}`} className="h-7 w-7 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center">{expandedId === player.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button>
                             </div>
                           </div>
                           {expandedId === player.id && (
@@ -448,6 +524,31 @@ export default function DraftBoard() {
                                 <div><span className="text-slate-400 font-bold">Rostered</span><p className="font-black mt-1">{formatNumber(player.rostered)}%</p></div>
                                 <textarea value={playerMeta.note} onChange={(e) => updateMeta(player.id, { note: e.target.value })} placeholder="Add a draft note…" className="col-span-2 sm:col-span-3 resize-none border border-slate-300 rounded-md p-2 outline-none focus:border-[#0081C6]" rows={2} />
                               </div>
+                              <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2.5">
+                                  <div><h3 className="text-xs font-black text-slate-800">{season - 1} game log</h3><p className="mt-0.5 text-[10px] text-slate-400">Fantasy points use {scoring} scoring</p></div>
+                                  <span className="text-[10px] font-bold text-slate-400">ESPN</span>
+                                </div>
+                                {gameLogLoading[player.id] ? (
+                                  <div className="space-y-2 p-3">{[1, 2, 3].map((item) => <div key={item} className="h-9 animate-pulse rounded bg-slate-100" />)}</div>
+                                ) : gameLogErrors[player.id] ? (
+                                  <div className="p-4 text-center text-xs text-red-600"><p>{gameLogErrors[player.id]}</p><button onClick={() => void loadPlayerGameLog(player)} className="mt-2 font-black underline">Try again</button></div>
+                                ) : !gameLogs[player.id]?.games.length ? (
+                                  <p className="p-5 text-center text-xs text-slate-500">{player.position === 'D/ST' ? 'Team-defense game logs aren’t available from this player feed.' : 'No regular-season games were found.'}</p>
+                                ) : (
+                                  <div className="max-h-96 space-y-1 overflow-auto bg-[#f6f8fb] p-1.5">
+                                    {gameLogs[player.id].games.map((game) => (
+                                      <div key={game.id} className="flex min-w-[610px] items-stretch overflow-hidden rounded-md border border-slate-200 bg-white transition hover:border-slate-300">
+                                        <div className="flex w-10 shrink-0 flex-col items-center justify-center border-r border-slate-100 bg-slate-50 px-1 py-1.5"><span className="text-[8px] font-black uppercase tracking-wide text-slate-400">Wk</span><strong className="text-xs text-slate-800">{game.week}</strong></div>
+                                        <div className="flex w-24 shrink-0 flex-col justify-center px-2 py-1.5"><span className="text-[8px] font-black uppercase tracking-wide text-slate-400">Matchup</span>{game.boxScoreUrl ? <a href={game.boxScoreUrl} target="_blank" rel="noreferrer noopener" className="font-black text-slate-800 hover:text-[#0081C6]">{game.location} {game.opponent}</a> : <strong className="text-slate-800">{game.location} {game.opponent}</strong>}</div>
+                                        <div className="flex w-20 shrink-0 flex-col justify-center border-r border-slate-100 px-1.5 py-1.5"><span className="text-[8px] font-black uppercase tracking-wide text-slate-400">Result</span><span><strong className={game.result === 'W' ? 'text-emerald-600' : game.result === 'L' ? 'text-red-500' : 'text-slate-600'}>{game.result}</strong> <span className="font-bold text-slate-500">{game.score}</span></span></div>
+                                        <div className="flex flex-1 items-stretch">{gameStatCells(player, game).map((cell) => <div key={cell.label} className="flex min-w-14 flex-1 flex-col items-center justify-center border-r border-slate-100 px-1 py-1.5 text-center"><span className="whitespace-nowrap text-[8px] font-black uppercase tracking-wide text-slate-400">{cell.label}</span><strong className="mt-0.5 text-xs text-slate-700">{cell.value}</strong></div>)}</div>
+                                        <div className="flex w-16 shrink-0 flex-col items-center justify-center bg-[#e7f7fc] px-1 py-1.5"><span className="text-[8px] font-black uppercase tracking-wide text-[#007ca8]">FPTS</span><strong className="text-base text-[#022A53]">{game.fantasyPoints.toFixed(1)}</strong></div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
                         </article>
@@ -455,7 +556,7 @@ export default function DraftBoard() {
                     );
                   })}
                 </SortableContext>
-                <DragOverlay adjustScale={false} modifiers={[restrictToVerticalColumn]} dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
+                <DragOverlay adjustScale={false} modifiers={[restrictToVerticalColumn]} dropAnimation={null}>
                   {activeDragId && playerMap.get(activeDragId) ? (
                     <div className="w-full rounded-lg border-2 border-cyan-400 bg-white px-4 py-2 shadow-xl flex items-center gap-3">
                       <GripVertical size={18} className="text-cyan-600" />
@@ -494,7 +595,7 @@ export default function DraftBoard() {
                   </div>
                 ))}
               </div>
-              <div className="p-3 bg-slate-50 border-t border-slate-200 text-[10px] leading-relaxed text-slate-500">Rankings and projections are supplied by ESPN’s unofficial public fantasy API and may change without notice. DraftBase caches results for 15 minutes.</div>
+              <div className="p-3 bg-slate-50 border-t border-slate-200 text-[10px] leading-relaxed text-slate-500">Rankings, projections, and player information are supplied by ESPN’s unofficial public APIs and may change without notice. DraftBase caches results for 15 minutes.</div>
             </aside>
           </div>
         </div>

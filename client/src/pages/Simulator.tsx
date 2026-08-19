@@ -27,7 +27,7 @@ export default function Simulator() {
     try {
       const response = await createDraft();
       localStorage.setItem('activeDraftId', response.draft.id);
-      navigate(`/draft/${response.draft.id}`);
+      navigate(`/nfl-draft/draft/${response.draft.id}`);
     } catch (err) {
       setError('Failed to create draft. Please try again.');
       console.error(err);
@@ -47,7 +47,7 @@ export default function Simulator() {
     try {
       await joinDraft(draftIdInput.trim());
       localStorage.setItem('activeDraftId', draftIdInput.trim());
-      navigate(`/draft/${draftIdInput.trim()}`);
+      navigate(`/nfl-draft/draft/${draftIdInput.trim()}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join draft');
       console.error(err);

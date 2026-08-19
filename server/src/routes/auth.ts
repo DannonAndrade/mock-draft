@@ -15,7 +15,7 @@ router.get('/google', (req, res, next) => {
 router.get(
   '/google/callback',
   passport.authenticate('google', { failureRedirect: `${clientUrl}/signin?authError=google` }),
-  (_req, res) => res.redirect(`${clientUrl}/simulator`)
+  (_req, res) => res.redirect(`${clientUrl}/nfl-draft/simulator`)
 );
 
 router.get('/me', (req, res) => {

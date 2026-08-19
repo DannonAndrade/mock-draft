@@ -13,9 +13,7 @@ export default function Layout() {
         <div className="max-w-screen-2xl mx-auto px-6 h-full flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 hover:opacity-90 transition font-sans">
             <img src={DraftBaseLogo} alt="DraftBase Logo" className="h-8 w-auto object-contain" />
-            <span className="text-xl font-extrabold tracking-tight text-white">
-              DraftBase <span className="text-[#022A53] font-black">Simulator</span>
-            </span>
+            <span className="text-xl font-extrabold tracking-tight text-white">DraftBase</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-6 h-full">
@@ -30,39 +28,39 @@ export default function Layout() {
               Home
             </Link>
             <Link
-              to="/simulator"
+              to="/nfl-draft"
               className={`text-sm font-semibold transition py-5 border-b-2 h-full flex items-center ${
-                location.pathname === '/simulator' || location.pathname.startsWith('/draft/')
+                location.pathname.startsWith('/nfl-draft')
                   ? 'text-white border-[#022A53]'
                   : 'text-blue-50 border-transparent hover:text-white hover:border-[#022A53]/55'
               }`}
             >
-              Simulator
+              NFL Draft
             </Link>
             <Link
-              to="/board"
+              to="/fantasy"
               className={`text-sm font-semibold transition py-5 border-b-2 h-full flex items-center ${
-                location.pathname === '/board'
+                location.pathname.startsWith('/fantasy')
                   ? 'text-white border-[#022A53]'
                   : 'text-blue-50 border-transparent hover:text-white hover:border-[#022A53]/55'
               }`}
             >
-              Draft Board
+              Fantasy
             </Link>
           </nav>
 
           <div className="flex items-center gap-4">
             <Link
-              to="/simulator"
+              to="/nfl-draft"
               className="md:hidden bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors"
             >
-              Simulator
+              NFL Draft
             </Link>
             <Link
-              to="/board"
+              to="/fantasy"
               className="md:hidden bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors"
             >
-              Board
+              Fantasy
             </Link>
             {user ? (
               <Link
@@ -89,7 +87,7 @@ export default function Layout() {
             ) : null}
             {user && activeDraftId && !location.pathname.includes(`/draft/${activeDraftId}`) && (
               <Link
-                to={`/draft/${activeDraftId}`}
+              to={`/nfl-draft/draft/${activeDraftId}`}
                 className="bg-[#022A53] hover:bg-[#011f40] text-white text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-lg transition-colors"
               >
                 Resume Draft

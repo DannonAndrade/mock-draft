@@ -1,10 +1,7 @@
 import { Link } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
 import DraftBaseLogo from '../assets/DraftBase-Logo.svg';
 
 export default function Home() {
-  const { user } = useAuth();
-
   return (
     <div className="relative flex min-h-[calc(100vh-64px)] items-center justify-center overflow-hidden bg-[#f1f5f9] px-6 py-16">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,#cbd5e160_1px,transparent_1px),linear-gradient(to_bottom,#cbd5e160_1px,transparent_1px)] bg-[size:32px_32px]" />
@@ -26,16 +23,16 @@ export default function Home() {
 
         <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
           <Link
-            to={user ? '/simulator' : '/signin'}
+            to="/nfl-draft"
             className="rounded-xl bg-[#022A53] px-6 py-3.5 font-bold text-white shadow-sm transition hover:bg-[#011f40]"
           >
-            {user ? 'Open Simulator' : 'Get Started'}
+            NFL Draft
           </Link>
           <Link
-            to="/board"
+            to="/fantasy"
             className="rounded-xl border border-slate-300 bg-white px-6 py-3.5 font-bold text-slate-700 transition hover:border-[#0081C6] hover:text-[#0081C6]"
           >
-            Draft Board
+            Fantasy
           </Link>
         </div>
       </main>

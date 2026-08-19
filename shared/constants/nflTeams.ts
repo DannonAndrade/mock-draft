@@ -75,7 +75,9 @@ export const NFL_TEAM_LOGO_ABBREVIATIONS = [
 /** Public URL path for Vite `public/` assets. */
 export function getNflTeamLogoSrc(teamName: string): string | undefined {
   const names = NFL_TEAM_NAMES as readonly string[];
-  const i = names.indexOf(teamName);
+  const abbreviations = NFL_TEAM_LOGO_ABBREVIATIONS as readonly string[];
+  const normalized = teamName.toLowerCase();
+  const i = names.indexOf(teamName) >= 0 ? names.indexOf(teamName) : abbreviations.indexOf(normalized);
   if (i === -1) return undefined;
   const abbr = NFL_TEAM_LOGO_ABBREVIATIONS[i];
   return `/assets/nfl-logos/${abbr}.png`;
@@ -118,4 +120,3 @@ export const NFC_TEAMS = [
   'Tampa Bay Buccaneers',
   'Washington Commanders',
 ] as const;
-

@@ -15,7 +15,7 @@ A fantasy football mock draft simulator and customizable player ranking board.
 - `server/`: Express 5, Socket.IO, Passport Google OAuth, and PostgreSQL
 - `shared/`: TypeScript types and draft constants imported by both applications
 
-The draft simulator uses the players stored in PostgreSQL. The ranking board separately loads current fantasy data from ESPN and Sleeper through the server, so that feature requires outbound internet access.
+The draft simulator uses the players stored in PostgreSQL. The ranking board separately loads current fantasy data from ESPN through the server, so that feature requires outbound internet access.
 
 ## Set up from scratch
 
@@ -106,6 +106,7 @@ source .env
 set +a
 psql "$DATABASE_URL" -f migrations/001-create-core-schema.sql
 npm run migrate:auth
+psql "$DATABASE_URL" -f migrations/003-create-fantasy-boards.sql
 psql "$DATABASE_URL" -f migrations/seed-players.sql
 ```
 

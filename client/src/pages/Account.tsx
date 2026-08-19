@@ -107,7 +107,7 @@ export default function Account() {
             )}
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
               <Link
-                to="/simulator"
+                to="/nfl-draft/simulator"
                 className="rounded-xl bg-[#022A53] px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-[#011f40]"
               >
                 Open Simulator
